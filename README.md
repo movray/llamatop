@@ -38,13 +38,14 @@ can show far more than the generic `/metrics` scraping of multi-backend tools.
 ## Features
 
 - **Overview** – model, throughput with sparklines, KV cache, every slot with state
-  (`idle`, `warm`, `prefill`, `gen`), prefill and generation progress, sampler parameters
+  (`idle`, `warm`, `prefill`, `gen`), prefill and generation progress, sampler parameters;
+  slot actions: erase a slot's KV cache, save it to a file, restore it
 - **History** – line chart with time axis for gen and prefill speed, active slots, KV usage,
   queue and ping, over 1 min to 1 h
 - **Requests** – completed requests detected from slot changes, with TTFT, duration, gen speed,
   cache hits and the sampler parameters they ran with; statistics (avg, p50, p95, max) and
   processed server metrics
-- **Tools** – slot actions (erase, save, restore), LoRA adapter scales, and a benchmark series
+- **Tools** – LoRA adapter scales and a benchmark series
 - **Analysis** – alerts with hold times, and an AI assessment of the monitoring data
 - **Simulator** – `-sim` runs a built-in fake llama-server to try everything without a real one
 - **Snapshots** – `-once` prints one screen or JSON for scripts
@@ -148,6 +149,26 @@ the first and the last poll that saw it generating, so it is exact whenever it w
 Live speeds come from token deltas between polls; the `/metrics` counters are only updated when a
 task finishes. The averages `prompt_tokens_seconds` and `predicted_tokens_seconds` are reset by the
 server on every `/metrics` request, so llamatop computes averages from the totals instead.
+
+## Slot actions
+
+In the Overview, select a slot with `↑/↓` and press:
+
+| Key | Action | llama-server call |
+|---|---|---|
+| `e` | **erase** – discard the slot's KV cache (its cached context) | `POST /slots/{id}?action=erase` |
+| `s` | **save** – write the slot's KV cache to a file | `POST /slots/{id}?action=save` |
+| `r` | **restore** – load a saved KV cache into the slot | `POST /slots/{id}?action=restore` |
+
+Erasing asks `Erase slot N? y/N`; only `y` confirms, `Enter` cancels. If the slot is busy, the
+prompt warns about it. Save and restore ask for a file name (default `slot<id>.bin`, then the
+last name used for that slot); the name is relative to the server's `--slot-save-path`
+directory, so the file ends up on the server, not on the machine running llamatop. The result
+shows as a status line, e.g. `Slot 1 erased, 2183 tokens discarded`.
+
+All three need llama-server to be started with `--slot-save-path <dir>` – without it the server
+rejects even erasing. Erasing frees KV cache space; the next request on that slot has to process
+its full prompt again.
 
 ## Alerts
 
