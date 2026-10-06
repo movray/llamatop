@@ -7,30 +7,9 @@ going on inside: per-slot state and progress, live prefill and generation speed,
 completed requests with TTFT and duration, history charts, alerts, a benchmark and an AI-generated
 assessment of the server's health.
 
-```
- llamatop   ok   http://127.0.0.1:39789  23:12:19  every 1s  ping 0 ms
-╭───────────────────────────────────────────╮╭─────────────────────────────────────────────────────╮
-│ Model                                     ││ Throughput                                          │
-│ File      sim-7B-Instruct-Q4_K_M.gguf     ││ Gen           44.8 t/s  ▁█                          │
-│ Alias     sim-7b · Q4_K - Medium          ││ Prefill     1195.5 t/s  ▁█                          │
-│ Size      7.2 B params · 4.4 GB           ││ Active       2/4 slots  █▆                          │
-│ Context   16384 / slot · trained 32768    ││ Queued           0 req  ▁▁                          │
-│ Slots     4                               ││                                                     │
-│ LoRA      sim-style 1                     ││ KV        ██░░░░░░░░░░░░░░  13.3%  8746/65536       │
-│ Build     sim                             ││                                                     │
-╰───────────────────────────────────────────╯╰─────────────────────────────────────────────────────╯
-╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ Slots                                                                                            │
-│ › #0  warm    ██░░░░░░░░░░░░░░░░   8.5%    1396/16384   task 9                                   │
-│   #1  gen     █░░░░░░░░░░░░░░░░░   3.1%     513/16384   task 10        44.8 t/s  cache   0%      │
-│               prefill ██████████████████ 453/453   gen ████████████████░░ 60/67                  │
-│   #2  prefill ██████░░░░░░░░░░░░  32.0%    5241/16384   task 11      1195.5 pp/s  cache   0%     │
-│               prefill ██████░░░░░░░░░░░░ 1656/5241   gen ░░░░░░░░░░░░░░░░░░ 0/235                │
-│   #3  warm    ██░░░░░░░░░░░░░░░░   9.7%    1596/16384   task 7                                   │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
+![llamatop overview: four slots generating in parallel, request log and statistics](docs/llamatop.png)
 
-*(Overview against the built-in simulator, `llamatop -sim`.)*
+*Overview of a llama-server with four slots under load.*
 
 llamatop is deliberately llama.cpp-only: it relies on llama-server specifics such as `/slots`, so it
 can show far more than the generic `/metrics` scraping of multi-backend tools.
@@ -84,7 +63,8 @@ tar -xzf llamatop-*-linux-amd64.tar.gz
 ./llamatop-*-linux-amd64/llamatop -version
 ```
 
-The binaries are statically linked and need no further libraries.
+The Linux binaries are statically linked; the macOS binaries only use the system library. Neither needs
+anything else installed.
 
 **macOS:** the binaries are not signed by Apple. If the archive was downloaded with a browser,
 macOS refuses to start the binary ("cannot be opened"). Remove the quarantine flag once:
