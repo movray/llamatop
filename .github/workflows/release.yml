@@ -59,8 +59,9 @@ jobs:
           mkdir -p "dist/$NAME"
           go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/$NAME/llamatop" .
           cp README.md LICENSE llamatop.example.toml "dist/$NAME/"
-          # License texts of everything compiled in for this GOOS/GOARCH.
-          sh scripts/third-party-licenses.sh > "dist/$NAME/THIRD_PARTY_LICENSES.txt"
+          # License texts of everything compiled in for this GOOS/GOARCH;
+          # strict: a missing license text fails the release.
+          LICENSES_STRICT=1 sh scripts/third-party-licenses.sh > "dist/$NAME/THIRD_PARTY_LICENSES.txt"
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
           (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
       - uses: actions/upload-artifact@v7

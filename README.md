@@ -293,4 +293,7 @@ llamatop is released under the [MIT License](LICENSE).
 
 The release binaries include the Go runtime and third-party modules under the MIT and BSD
 licenses; their license texts are in `THIRD_PARTY_LICENSES.txt` in every release archive.
-`scripts/third-party-licenses.sh` generates that file for the current `GOOS`/`GOARCH`.
+`scripts/third-party-licenses.sh` generates that file for the current `GOOS`/`GOARCH`. Some
+distribution packages of Go (e.g. Debian's) lack the Go license file; the script then warns and
+notes the gap, or uses the file given in `GO_LICENSE`. The release workflow runs it with
+`LICENSES_STRICT=1`, where any missing license text is an error.
