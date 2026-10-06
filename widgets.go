@@ -345,10 +345,12 @@ func fmtDur(d time.Duration) string {
 		return "–"
 	case d < 10*time.Second:
 		return fmt.Sprintf("%.1fs", d.Seconds())
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
 	case d < time.Hour:
 		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 	}
-	return d.Round(time.Minute).String()
+	return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
 func fmtSec(s float64) string { return fmtDur(time.Duration(s * float64(time.Second))) }

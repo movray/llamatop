@@ -183,3 +183,19 @@ func TestPartialRequest(t *testing.T) {
 		t.Errorf("stats: dur %d ttft %d gen %d rate %d", st.dur.n, st.ttft.n, st.gen.n, st.rate.n)
 	}
 }
+
+func TestFmtDur(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		0:                                     "–",
+		9500 * time.Millisecond:               "9.5s",
+		22 * time.Second:                      "22s",
+		59*time.Second + 900*time.Millisecond: "59s",
+		3*time.Minute + 5*time.Second:         "3m05s",
+		time.Hour + 5*time.Minute + 40*time.Second: "1h05m",
+		26 * time.Hour: "26h00m",
+	} {
+		if got := fmtDur(d); got != want {
+			t.Errorf("fmtDur(%s) = %q, want %q", d, got, want)
+		}
+	}
+}
