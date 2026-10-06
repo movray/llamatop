@@ -68,15 +68,31 @@ Some features need llama-server start flags:
 ## Install
 
 Download the archive for your platform from the
-[releases page](https://github.com/movray/llamatop/releases) (currently Linux amd64), then:
+[releases page](https://github.com/movray/llamatop/releases):
+
+| Platform | Archive |
+|---|---|
+| Linux x86-64 | `llamatop-<version>-linux-amd64.tar.gz` |
+| Linux ARM64 (e.g. Raspberry Pi 4/5, Graviton) | `llamatop-<version>-linux-arm64.tar.gz` |
+| macOS Apple Silicon (M1 and later) | `llamatop-<version>-darwin-arm64.tar.gz` |
+| macOS Intel | `llamatop-<version>-darwin-amd64.tar.gz` |
 
 ```sh
-sha256sum -c llamatop-*-linux-amd64.tar.gz.sha256
+sha256sum -c llamatop-*-linux-amd64.tar.gz.sha256      # macOS: shasum -a 256 -c …
 tar -xzf llamatop-*-linux-amd64.tar.gz
 ./llamatop-*-linux-amd64/llamatop -version
 ```
 
-The binary is statically linked and needs no further libraries.
+The binaries are statically linked and need no further libraries.
+
+**macOS:** the binaries are not signed by Apple. If the archive was downloaded with a browser,
+macOS refuses to start the binary ("cannot be opened"). Remove the quarantine flag once:
+
+```sh
+xattr -d com.apple.quarantine llamatop-*-darwin-*/llamatop
+```
+
+Downloads with `curl` are not affected.
 
 Or build it yourself:
 
@@ -175,7 +191,8 @@ diagnosis – small models in particular get details wrong. It only works with l
 Precedence: built-in defaults < config file < `LLAMA_API_KEY` < command-line flags.
 
 The config file is TOML. llamatop reads the file given with `-c`; without `-c` it loads
-`~/.config/llamatop/config.toml` (or `$XDG_CONFIG_HOME/llamatop/config.toml`) if it exists.
+`~/.config/llamatop/config.toml` (or `$XDG_CONFIG_HOME/llamatop/config.toml`) if it exists –
+on macOS as well.
 Unknown keys and invalid values are reported as errors.
 
 ```sh
@@ -233,9 +250,9 @@ minute of load so there is something to see right away.
 ## Releases
 
 Pushing a version tag starts the [release workflow](.github/workflows/release.yml): it runs
-`go vet` and the tests, builds a static binary for Linux amd64 with the version built in
-(`llamatop -version`), and publishes a GitHub release with the archive, a SHA-256 checksum and
-generated release notes.
+`go vet` and the tests on Linux amd64, Linux arm64 and macOS, builds static binaries for
+Linux amd64/arm64 and macOS amd64/arm64 with the version built in (`llamatop -version`), and
+publishes a GitHub release with the archives, SHA-256 checksums and generated release notes.
 
 ```sh
 git tag v0.1.0

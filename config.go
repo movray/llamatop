@@ -124,10 +124,16 @@ var (
 // defaultConfigFile returns ~/.config/llamatop/config.toml (or below
 // $XDG_CONFIG_HOME) if it exists. Any other stat error returns the path,
 // so loading it reports the problem instead of silently skipping the file.
+// Not os.UserConfigDir: on macOS that is ~/Library/Application Support,
+// while command-line tools there conventionally use ~/.config as well.
 func defaultConfigFile() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return ""
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		dir = filepath.Join(home, ".config")
 	}
 	p := filepath.Join(dir, "llamatop", "config.toml")
 	if _, err := os.Stat(p); errors.Is(err, fs.ErrNotExist) {

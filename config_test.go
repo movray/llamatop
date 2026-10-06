@@ -85,3 +85,15 @@ func TestDefaultConfigFile(t *testing.T) {
 		t.Errorf("got %q, want %q", p, want)
 	}
 }
+
+func TestDefaultConfigFileHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", home)
+	want := filepath.Join(home, ".config", "llamatop", "config.toml")
+	os.MkdirAll(filepath.Dir(want), 0o700)
+	os.WriteFile(want, []byte(""), 0o600)
+	if p := defaultConfigFile(); p != want {
+		t.Errorf("got %q, want %q", p, want)
+	}
+}
