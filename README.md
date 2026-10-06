@@ -7,7 +7,7 @@ going on inside: per-slot state and progress, live prefill and generation speed,
 completed requests with TTFT and duration, history charts, alerts, a benchmark and an AI-generated
 assessment of the server's health.
 
-![llamatop overview: four slots generating in parallel, request log and statistics](docs/llamatop.png)
+![llamatop overview: four slots generating in parallel, request log and statistics](https://raw.githubusercontent.com/movray/llamatop/main/docs/llamatop.png)
 
 *Overview of a llama-server with four slots under load.*
 
@@ -286,3 +286,11 @@ views at 80×24, 120×40 and 200×60 to make sure nothing overflows the terminal
 Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Lip Gloss](https://github.com/charmbracelet/lipgloss) and
 [BurntSushi/toml](https://github.com/BurntSushi/toml).
+
+## License
+
+llamatop is released under the [MIT License](LICENSE).
+
+The release binaries include the Go runtime and third-party modules under the MIT and BSD
+licenses; their license texts are in `THIRD_PARTY_LICENSES.txt` in every release archive.
+`scripts/third-party-licenses.sh` generates that file for the current `GOOS`/`GOARCH`.
