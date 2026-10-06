@@ -1,0 +1,60 @@
+# llamatop configuration – use with:  llamatop -c llamatop.toml
+# Without -c, llamatop loads ~/.config/llamatop/config.toml if it exists.
+#
+# Every key is optional; missing keys keep their built-in default (shown here).
+# Order of precedence: defaults < this file < LLAMA_API_KEY < command-line flags.
+# Durations are written like "500ms", "10s", "5m", "1h".
+# llamatop -print-config shows the effective configuration.
+
+[server]
+url      = "http://localhost:8080"     # flag -u
+api_key  = ""                          # flag -k; keep this file private if you set it
+interval = "1s"                        # poll interval, at least 100ms (flag -i)
+timeout  = "3s"                        # timeout per poll request (flag -timeout)
+
+[ai]
+# Server for the AI analysis (view 5). Empty = the monitored server.
+url         = ""                       # flag -ai-url
+api_key     = ""                       # empty = server.api_key (flag -ai-key)
+max_tokens  = 1200                     # flag -ai-max-tokens
+temperature = 0.3
+thinking    = false                    # let reasoning models think first: better, but slower (flag -ai-thinking)
+
+[ui]
+view     = "overview"                  # start view: overview, history, requests, tools, analysis (flag -view)
+range    = "5m"                        # start time range in History (flag -range)
+fill     = true                        # fill the area under the chart line (flag -fill)
+history  = "1h"                        # how long the history is kept (flag -history)
+log_size = 500                         # completed requests kept in the log (flag -log-size)
+
+[alerts]
+enabled     = true                     # flag -alerts
+kv_warn_pct = 85.0                     # flag -kv-warn
+kv_crit_pct = 95.0                     # flag -kv-crit
+ping        = "500ms"                  # alert when the server answers slower (flag -alert-ping)
+gen_drop    = 0.5                      # alert when gen speed falls below this share of the usual (flag -gen-drop)
+
+  # How long a condition must persist before its alert fires (file only).
+  [alerts.hold]
+  down   = "3s"
+  health = "5s"
+  kv     = "10s"
+  queue  = "10s"
+  ping   = "10s"
+  gen    = "15s"
+
+[benchmark]
+output_tokens = 128                    # flag -bench-tokens
+short_prompt  = 64                     # flag -bench-short
+long_prompt   = 2048                   # flag -bench-long
+parallel      = 0                      # parallel requests, 0 = as many as there are slots (flag -bench-parallel)
+
+[colors]
+# "#RRGGBB" or an ANSI color number 0-255 (file only).
+accent = "#7D56F4"
+green  = "#04B575"
+yellow = "#E5C07B"
+red    = "#E06C75"
+cyan   = "#56B6C2"
+dim    = "244"
+border = "238"
