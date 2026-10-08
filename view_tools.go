@@ -92,6 +92,9 @@ func (u *ui) benchLines() (head, rows []string) {
 		if run.busy > 0 {
 			state += stDim.Render(fmt.Sprintf("  (%d slot(s) busy at start)", run.busy))
 		}
+		if run.model != "" {
+			state += stDim.Render("  model " + run.model)
+		}
 		if state != "" {
 			rows = append(rows, fmt.Sprintf("%-8s %s", label, state))
 		}

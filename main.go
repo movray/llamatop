@@ -1,5 +1,6 @@
 // llamatop – terminal dashboard for llama.cpp llama-server (Bubble Tea + Lip Gloss).
-// Polls /health, /slots, /props, /v1/models, /lora-adapters and (if enabled) /metrics.
+// Polls /health, /slots, /props, /v1/models, /lora-adapters and (if enabled) /metrics;
+// in router mode also /models, and the per-model endpoints with ?model=.
 //
 //	go build -o llamatop .
 //	./llamatop -u http://localhost:8080 -i 1s
@@ -25,7 +26,7 @@ import (
 var version = "dev"
 
 func main() {
-	once, output, sim, printCfg, err := readConfig()
+	once, output, sim, simRouter, printCfg, err := readConfig()
 	if showVersion {
 		fmt.Println("llamatop", version)
 		return
@@ -39,8 +40,12 @@ func main() {
 		writeConfig(os.Stdout, cfg, cfgFile)
 		return
 	}
-	if sim {
-		simURL, err := startSim()
+	if sim || simRouter {
+		start := startSim
+		if simRouter {
+			start = startSimRouter
+		}
+		simURL, err := start()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "llamatop: simulator:", err)
 			os.Exit(1)
@@ -80,10 +85,15 @@ func main() {
 		if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil {
 			u.width = w
 		}
-		// Rates need two samples.
-		u.m.update(u.c.poll(ctx, true))
+		// Rates need two samples. A router is only recognised by the first
+		// poll and the model to monitor by the second, so the monitor of that
+		// model may still be empty.
+		u.handleSample(u.modelClient().poll(ctx, true, u.router))
+		for i := 0; i < 2 && u.router && (u.model == "" || u.m.cur.at.IsZero()); i++ {
+			u.handleSample(u.modelClient().poll(ctx, true, true))
+		}
 		time.Sleep(u.interval)
-		u.m.update(u.c.poll(ctx, false))
+		u.handleSample(u.modelClient().poll(ctx, false, u.router))
 		if output == "json" {
 			if err := u.writeJSON(os.Stdout); err != nil {
 				fmt.Fprintln(os.Stderr, "llamatop:", err)

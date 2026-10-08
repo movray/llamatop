@@ -22,6 +22,21 @@ type jsonSnapshot struct {
 	MetricsError string             `json:"metrics_error,omitempty"`
 	LoRA         []loraAdapter      `json:"lora,omitempty"`
 	Alerts       []jsonAlert        `json:"alerts"`
+	Router       *jsonRouter        `json:"router,omitempty"`
+}
+
+// Router mode: the model list; all other data is for the monitored model.
+type jsonRouter struct {
+	Model     string            `json:"model"` // monitored, "" = none
+	Pinned    bool              `json:"pinned"`
+	MaxModels int               `json:"max_models"`
+	Models    []jsonRouterModel `json:"models"`
+}
+
+type jsonRouterModel struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Source string `json:"source,omitempty"`
 }
 
 type jsonModel struct {
@@ -93,6 +108,12 @@ func (u *ui) writeJSON(w io.Writer) error {
 	}
 	if s.metricsErr != nil {
 		out.MetricsError = s.metricsErr.Error()
+	}
+	if u.router {
+		out.Router = &jsonRouter{Model: u.model, Pinned: u.pinned, MaxModels: u.maxInst, Models: []jsonRouterModel{}}
+		for _, r := range u.models {
+			out.Router.Models = append(out.Router.Models, jsonRouterModel{ID: r.ID, Status: r.state(), Source: r.Source})
+		}
 	}
 	t := &out.Throughput
 	t.GenTPS, t.PrefillTPS = m.genRate, m.ppRate

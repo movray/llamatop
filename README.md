@@ -26,14 +26,17 @@ can show far more than the generic `/metrics` scraping of multi-backend tools.
   processed server metrics
 - **Tools** – LoRA adapter scales and a benchmark series
 - **Analysis** – alerts with hold times, and an AI assessment of the monitoring data
-- **Simulator** – `-sim` runs a built-in fake llama-server to try everything without a real one
+- **Models** – router mode: all models with their status, monitor any of them or follow the loaded
+  one, load and unload models
+- **Simulator** – `-sim` runs a built-in fake llama-server to try everything without a real one,
+  `-sim-router` one in router mode
 - **Snapshots** – `-once` prints one screen or JSON for scripts
 - **Configuration** – TOML config file plus command-line flags
 
 ## Requirements
 
 - Go 1.24 or newer to build
-- llama-server from llama.cpp; tested with build `b10540`
+- llama-server from llama.cpp; tested with build `b10540`, router mode with `b11514`
 
 Some features need llama-server start flags:
 
@@ -86,6 +89,7 @@ go build -o llamatop .
 ```sh
 ./llamatop -u http://localhost:8080          # monitor a server
 ./llamatop -u http://gpu-box:8080 -i 500ms   # poll twice per second
+./llamatop -m qwen3.6-35b                    # router mode: monitor this model
 ./llamatop -sim                              # try it with the built-in simulator
 ./llamatop -once                             # print one screen and exit
 ./llamatop -once -output json                # snapshot as JSON
@@ -98,7 +102,7 @@ For a server with an API key, use `-k <key>`, the environment variable `LLAMA_AP
 
 ## Views and keys
 
-Switch views with `1`–`5` or `Tab` / `Shift+Tab`.
+Switch views with `1`–`6` or `Tab` / `Shift+Tab`.
 
 | Key | Everywhere |
 |---|---|
@@ -113,6 +117,7 @@ Switch views with `1`–`5` or `Tab` / `Shift+Tab`.
 | 3 Requests | `↑/↓` select request · `Enter` details · `End` follow the latest |
 | 4 Tools | `b` start benchmark · `x` abort · `↑/↓` adapter · `←/→` scale · `Enter` apply · `PgUp/PgDn` scroll results |
 | 5 Analysis | `a` run AI analysis · `x` abort · `r` show the data sent · `↑/↓` `PgUp/PgDn` scroll |
+| 6 Models | `↑/↓` select model · `Enter` monitor it · `f` follow the loaded model · `l` load · `u` unload |
 
 `vim` keys `h j k l` work wherever arrows do. Erasing a slot asks `y/N`; only `y` confirms.
 
@@ -129,6 +134,38 @@ the first and the last poll that saw it generating, so it is exact whenever it w
 Live speeds come from token deltas between polls; the `/metrics` counters are only updated when a
 task finishes. The averages `prompt_tokens_seconds` and `predicted_tokens_seconds` are reset by the
 server on every `/metrics` request, so llamatop computes averages from the totals instead.
+
+## Router mode
+
+A llama-server started without a model (`-m`) runs as a **router**: it starts a separate
+instance per model on demand – from the cache, `--models-dir` or `--models-preset` – and forwards
+each request by its model name. llamatop recognises this from `/props` (`"role": "router"`) and
+then always monitors one model at a time: slots, metrics, history, requests and alerts belong to
+that model, while the header shows its name and status.
+
+| How the model is chosen | |
+|---|---|
+| default | follow the loaded model: the one that is loaded, sleeping or loading; when the router replaces it, llamatop switches along |
+| `-m <name>` / `server.model` | always this model (pinned), also while it is not loaded |
+| view 6, `Enter` / `f` | pin the selected model / follow the loaded one again |
+
+Each model keeps its own history and request log while llamatop runs, so switching back and forth
+loses nothing but the time in between.
+
+Monitoring never loads a model: all its requests carry `autoload=false`, so the router answers
+"model is not loaded" instead of starting one. While a model is sleeping (`--sleep-idle-seconds`)
+llamatop does not poll its `/slots` and `/lora-adapters` either, because those would wake it up;
+`/props` and `/metrics` don't. View 6 lists all models with status, context size and parallel
+slots from their launch arguments, file size, source and the full launch arguments of the
+selected model. `l` and `u` load and unload a model (`POST /models/load`, `/models/unload`); if
+the router already runs `--models-max` models, loading asks first, since the router then unloads
+the least recently used one.
+
+Slot actions and the benchmark go to the monitored model. Setting LoRA scales is not possible
+through the router: it routes POST requests by the `"model"` field of a JSON object, and
+`/lora-adapters` takes a list. The AI analysis is answered by the monitored model, or by the model
+given with `-ai-model` / `ai.model` – unlike monitoring, the analysis may load that model. With
+`--models-max 1` this unloads the monitored model.
 
 ## Slot actions
 
@@ -206,8 +243,8 @@ chmod 600 ~/.config/llamatop/config.toml   # if you put an API key in it
 
 | Section | Settings |
 |---|---|
-| `[server]` | `url`, `api_key`, `interval`, `timeout` |
-| `[ai]` | `url`, `api_key`, `max_tokens`, `temperature`, `thinking` |
+| `[server]` | `url`, `api_key`, `model`, `interval`, `timeout` |
+| `[ai]` | `url`, `api_key`, `model`, `max_tokens`, `temperature`, `thinking` |
 | `[ui]` | start `view`, start `range`, chart `fill`, `history` length, `log_size` |
 | `[alerts]` | `enabled`, `kv_warn_pct`, `kv_crit_pct`, `ping`, `gen_drop` |
 | `[alerts.hold]` | hold time per alert (file only) |
@@ -220,7 +257,8 @@ default port of llama-server; set your own in the config file or with `-u`.
 
 ## JSON snapshot
 
-`-once` polls twice, one interval apart (rates need two samples), then prints:
+`-once` polls twice, one interval apart (rates need two samples), then prints – against a router
+one or two more polls first, to recognise it and pick the model:
 
 ```sh
 ./llamatop -once -output json | jq '.throughput'
@@ -238,7 +276,8 @@ default port of llama-server; set your own in the config file or with `-u`.
 ```
 
 The full object contains `time`, `url`, `health`, `ping_ms`, `model`, `throughput`, `slots`,
-`metrics`, `lora` and active `alerts`.
+`metrics`, `lora` and active `alerts`; in router mode also `router` with the monitored model and
+the status of all models.
 
 ## Simulator
 
@@ -247,6 +286,10 @@ endpoints as the real server – including slot actions, LoRA, `/completion` and
 with 4 slots, varying load that sometimes overloads the server and queues requests, prompt cache
 hits, and every 5 minutes a 30-second slowdown that triggers the gen-speed alert. It pre-runs one
 minute of load so there is something to see right away.
+
+`-sim-router` simulates a router with three models: `sim-7b` (4 slots) is loaded at start,
+`sim-32b` (2 slots, slower) and `sim-coder-1.5b` (2 slots, fast) are not. At most two models run
+at once; a load takes 3 seconds, and loading a third model unloads the least recently used.
 
 ## Releases
 
@@ -263,12 +306,12 @@ git push origin v0.1.0
 ## Development
 
 ```sh
-go test ./...   # ~8 s; includes an end-to-end run against the simulator
+go test ./...   # ~14 s; includes end-to-end runs against both simulators
 go vet ./...
 ```
 
-The tests check request detection, alerts, JSON output, the configuration, and render all five
-views at 80×24, 120×40 and 200×60 to make sure nothing overflows the terminal.
+The tests check request detection, alerts, JSON output, the configuration, and render all six
+views at 80×24, 120×40 and 200×60 (and in router mode) to make sure nothing overflows the terminal.
 
 | File | Contents |
 |---|---|
@@ -279,7 +322,7 @@ views at 80×24, 120×40 and 200×60 to make sure nothing overflows the terminal
 | `stats.go`, `alerts.go` | statistics and alert rules |
 | `actions.go`, `bench.go`, `analysis.go` | slot/LoRA actions, benchmark, AI analysis |
 | `ui.go` | Bubble Tea model and keys |
-| `view_*.go`, `widgets.go` | views, panels, charts |
+| `view_*.go`, `widgets.go` | views, panels, charts (`view_models.go`: router models) |
 | `output.go` | JSON snapshot |
 | `sim.go` | simulator |
 

@@ -12,9 +12,10 @@ import (
 
 // Result of an action, shown as the status line at the bottom.
 type actionMsg struct {
-	text string
-	err  error
-	lora bool // LoRA changed, reload the list
+	text   string
+	err    error
+	lora   bool // LoRA changed, reload the list
+	models bool // a model was loaded or unloaded
 }
 
 // Response of POST /slots/{id}?action=…
@@ -75,5 +76,17 @@ func setLoraCmd(ctx context.Context, c *client, scales map[int]float64) tea.Cmd 
 			return actionMsg{err: fmt.Errorf("set LoRA: %w", err), lora: true}
 		}
 		return actionMsg{text: fmt.Sprintf("LoRA scales applied to %d adapter(s)", len(in)), lora: true}
+	}
+}
+
+// Router mode: load or unload a model. The router answers right away; the
+// model list shows the progress.
+func modelActionCmd(ctx context.Context, c *client, action, model string) tea.Cmd {
+	return func() tea.Msg {
+		if err := c.post(ctx, "/models/"+action, map[string]string{"model": model}, nil); err != nil {
+			return actionMsg{err: fmt.Errorf("%s %s: %w", action, model, err), models: true}
+		}
+		verb := map[string]string{"load": "Loading", "unload": "Unloading"}[action]
+		return actionMsg{text: fmt.Sprintf("%s %s …", verb, model), models: true}
 	}
 }

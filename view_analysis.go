@@ -54,12 +54,12 @@ func (u *ui) analysisView(w int) string {
 	title := "AI analysis"
 	switch {
 	case a.running():
-		head = []string{fg(cYellow).Render(fmt.Sprintf("analysing with %s … %s (x aborts)", u.aiClient().base, fmtDur(time.Since(a.at))))}
+		head = []string{fg(cYellow).Render(fmt.Sprintf("analysing with %s … %s (x aborts)", u.aiTarget(), fmtDur(time.Since(a.at))))}
 	case a.err != nil:
 		head = []string{fg(cRed).Render("analysis failed: " + a.err.Error())}
 	case a.text == "":
 		head = []string{
-			stDim.Render("a sends a summary of the monitoring data to " + u.aiClient().base + " and shows its assessment."),
+			stDim.Render("a sends a summary of the monitoring data to " + u.aiTarget() + " and shows its assessment."),
 			stDim.Render("The request occupies a slot for a moment and appears in the request log."),
 		}
 	default:

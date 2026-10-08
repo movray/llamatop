@@ -43,6 +43,7 @@ type config struct {
 type serverConfig struct {
 	URL      string   `toml:"url"`
 	APIKey   string   `toml:"api_key"`
+	Model    string   `toml:"model"` // router mode: model to monitor, empty = follow the loaded one
 	Interval duration `toml:"interval"`
 	Timeout  duration `toml:"timeout"` // per poll request
 }
@@ -50,6 +51,7 @@ type serverConfig struct {
 type aiConfig struct {
 	URL         string  `toml:"url"`     // empty = the monitored server
 	APIKey      string  `toml:"api_key"` // empty = server.api_key
+	Model       string  `toml:"model"`   // router mode: model that answers, empty = the monitored one
 	MaxTokens   int     `toml:"max_tokens"`
 	Temperature float64 `toml:"temperature"`
 	Thinking    bool    `toml:"thinking"` // let reasoning models think (slower)
@@ -186,7 +188,7 @@ func (c *config) validate() error {
 	return errors.Join(errs...)
 }
 
-var viewKeys = []string{"overview", "history", "requests", "tools", "analysis"}
+var viewKeys = []string{"overview", "history", "requests", "tools", "analysis", "models"}
 
 func viewIndex(name string) int { return slices.Index(viewKeys, strings.ToLower(name)) }
 
@@ -215,11 +217,13 @@ func registerFlags(fs *flag.FlagSet, c *config) {
 	fs.StringVar(&c.Server.URL, "u", c.Server.URL, "llama-server base URL")
 	// Keys via Func, so -h never prints a key from the config file as default.
 	fs.Func("k", "API key (or LLAMA_API_KEY)", func(s string) error { c.Server.APIKey = s; return nil })
+	fs.StringVar(&c.Server.Model, "m", c.Server.Model, "router mode: model to monitor (default: follow the loaded one)")
 	fs.DurationVar(&c.Server.Interval.Duration, "i", c.Server.Interval.Duration, "poll interval")
 	fs.DurationVar(&c.Server.Timeout.Duration, "timeout", c.Server.Timeout.Duration, "timeout per poll request")
 
 	fs.StringVar(&c.AI.URL, "ai-url", c.AI.URL, "llama-server for the AI analysis (default: the monitored server)")
 	fs.Func("ai-key", "API key for -ai-url (default: -k)", func(s string) error { c.AI.APIKey = s; return nil })
+	fs.StringVar(&c.AI.Model, "ai-model", c.AI.Model, "router mode: model for the AI analysis (default: the monitored one)")
 	fs.IntVar(&c.AI.MaxTokens, "ai-max-tokens", c.AI.MaxTokens, "max tokens of the AI answer")
 	fs.BoolVar(&c.AI.Thinking, "ai-thinking", c.AI.Thinking, "let reasoning models think before answering (slower)")
 
@@ -279,14 +283,14 @@ func applyConfig() {
 	slices.Sort(zooms)
 }
 
-func readConfig() (once bool, output string, sim, printCfg bool, err error) {
+func readConfig() (once bool, output string, sim, simRouter, printCfg bool, err error) {
 	cfgFile = configPath(os.Args[1:])
 	if cfgFile == "" {
 		cfgFile = defaultConfigFile()
 	}
 	if cfgFile != "" {
 		if err := loadConfigFile(cfgFile, &cfg); err != nil {
-			return false, "", false, false, fmt.Errorf("config %s: %w", cfgFile, err)
+			return false, "", false, false, false, fmt.Errorf("config %s: %w", cfgFile, err)
 		}
 	}
 	if k := os.Getenv("LLAMA_API_KEY"); k != "" {
@@ -297,11 +301,12 @@ func readConfig() (once bool, output string, sim, printCfg bool, err error) {
 	fset.BoolVar(&once, "once", false, "take a snapshot (two polls, one interval apart), print, exit")
 	fset.StringVar(&output, "output", "table", "output format for -once: table or json")
 	fset.BoolVar(&sim, "sim", false, "monitor a built-in simulated llama-server instead of -u")
+	fset.BoolVar(&simRouter, "sim-router", false, "like -sim, but the simulated llama-server runs in router mode with several models")
 	fset.BoolVar(&printCfg, "print-config", false, "print the effective configuration as TOML and exit")
 	fset.BoolVar(&showVersion, "version", false, "print the version and exit")
 	fset.Parse(os.Args[1:])
 	if output != "table" && output != "json" {
-		return false, "", false, false, errors.New("-output must be table or json")
+		return false, "", false, false, false, errors.New("-output must be table or json")
 	}
-	return once, output, sim, printCfg, cfg.validate()
+	return once, output, sim, simRouter, printCfg, cfg.validate()
 }

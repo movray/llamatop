@@ -30,6 +30,8 @@ func (u *ui) View() string {
 		return u.toolsView(w)
 	case viewAnalysis:
 		return u.analysisView(w)
+	case viewModels:
+		return u.modelsView(w)
 	}
 	return u.overView(w)
 }
@@ -92,7 +94,11 @@ func (u *ui) help(w int) string {
 		viewReqs:     "↑/↓ select · Enter details · End latest",
 		viewTools:    "b benchmark · x abort · ↑/↓ adapter · ←/→ scale · Enter apply · PgUp/PgDn scroll",
 		viewAnalysis: "a analyse · x abort · r data sent · ↑/↓ PgUp/PgDn scroll",
+		viewModels:   "↑/↓ model · Enter monitor · f follow loaded · l load · u unload",
 	}[u.view]
+	if u.view == viewModels && !u.router {
+		keys = "router mode only"
+	}
 	// Arrow keys only steer the LoRA list; without adapters they do nothing.
 	if u.view == viewTools && len(u.m.lora) == 0 {
 		keys = "b benchmark · x abort · ↑/↓ PgUp/PgDn scroll"
@@ -173,7 +179,20 @@ func (u *ui) header(w int) string {
 		stBadge.Background(cAccent).Render("llamatop"),
 		stBadge.Background(hc).Render(s.health),
 	}
-	if p := u.m.props; p != nil && p.IsSleeping {
+	if u.router {
+		name := u.model
+		if name == "" {
+			name = "no model"
+		}
+		st := "unknown"
+		if r := u.findModel(u.model); r != nil {
+			st = r.state()
+		}
+		if st != "loaded" && u.model != "" {
+			name += " · " + st
+		}
+		parts = append(parts, stBadge.Background(modelStateColor(st)).Render(name))
+	} else if p := u.m.props; p != nil && p.IsSleeping {
 		parts = append(parts, stBadge.Background(cYellow).Render("sleeping"))
 	}
 	if q := s.metrics["requests_deferred"]; q > 0 {
@@ -200,10 +219,27 @@ func (u *ui) header(w int) string {
 func (u *ui) modelLines() []string {
 	p, mm := u.m.props, u.m.model
 	row := func(k, v string) string { return stLabel.Render(k) + v }
-	if p == nil {
-		return []string{stDim.Render("no data from /props yet")}
-	}
 	var lines []string
+	if u.router {
+		loaded := 0
+		for _, r := range u.models {
+			if r.running() {
+				loaded++
+			}
+		}
+		follow := "pinned, 6 Models to change"
+		if !u.pinned {
+			follow = "follows the loaded model"
+		}
+		lines = append(lines, row("Router", fmt.Sprintf("%d/%d models loaded%s", loaded, len(u.models), stDim.Render(" · "+follow))))
+	}
+	if p == nil {
+		msg := "no data from /props yet"
+		if err := u.m.cur.slotsErr; u.router && err != nil {
+			msg = err.Error()
+		}
+		return append(lines, stDim.Render(msg))
+	}
 	lines = append(lines, row("File", stBold.Render(filepath.Base(p.ModelPath))))
 	name := p.ModelAlias
 	if p.ModelFtype != "" {

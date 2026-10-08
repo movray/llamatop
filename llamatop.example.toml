@@ -9,6 +9,7 @@
 [server]
 url      = "http://localhost:8080"     # flag -u
 api_key  = ""                          # flag -k; keep this file private if you set it
+model    = ""                          # router mode: model to monitor, empty = follow the loaded one (flag -m)
 interval = "1s"                        # poll interval, at least 100ms (flag -i)
 timeout  = "3s"                        # timeout per poll request (flag -timeout)
 
@@ -16,12 +17,13 @@ timeout  = "3s"                        # timeout per poll request (flag -timeout
 # Server for the AI analysis (view 5). Empty = the monitored server.
 url         = ""                       # flag -ai-url
 api_key     = ""                       # empty = server.api_key (flag -ai-key)
+model       = ""                       # router mode: model that answers, empty = the monitored one (flag -ai-model)
 max_tokens  = 1200                     # flag -ai-max-tokens
 temperature = 0.3
 thinking    = false                    # let reasoning models think first: better, but slower (flag -ai-thinking)
 
 [ui]
-view     = "overview"                  # start view: overview, history, requests, tools, analysis (flag -view)
+view     = "overview"                  # start view: overview, history, requests, tools, analysis, models (flag -view)
 range    = "5m"                        # start time range in History (flag -range)
 fill     = true                        # fill the area under the chart line (flag -fill)
 history  = "1h"                        # how long the history is kept (flag -history)

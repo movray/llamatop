@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -45,7 +46,8 @@ type benchResult struct {
 
 type benchRun struct {
 	at      time.Time
-	busy    int // slots busy at start, skews the result
+	model   string // router mode: the model benchmarked
+	busy    int    // slots busy at start, skews the result
 	results []benchResult
 	done    bool
 	aborted bool
@@ -55,6 +57,7 @@ type benchState struct {
 	runs   []benchRun // oldest first
 	cancel context.CancelFunc
 	ctx    context.Context
+	client *client // fixed for the run, even if the monitored model changes
 	slots  int
 }
 
@@ -147,6 +150,10 @@ func (u *ui) startBench() tea.Cmd {
 	if b.running() {
 		return nil
 	}
+	if u.router && u.m.cur.slotsErr != nil && !errors.Is(u.m.cur.slotsErr, errSleeping) {
+		u.flash, u.flashErr, u.flashAt = "Benchmark: "+u.m.cur.slotsErr.Error(), true, time.Now()
+		return nil
+	}
 	busy := 0
 	for _, sl := range u.m.cur.slots {
 		if sl.IsProcessing {
@@ -158,13 +165,14 @@ func (u *ui) startBench() tea.Cmd {
 		b.slots = p.TotalSlots
 	}
 	b.ctx, b.cancel = context.WithCancel(u.ctx)
-	b.runs = append(b.runs, benchRun{at: time.Now(), busy: busy})
+	b.client = u.modelClient()
+	b.runs = append(b.runs, benchRun{at: time.Now(), model: b.client.model, busy: busy})
 	u.benchOff = 0 // newest run is on top
 	return u.benchStep(0)
 }
 
 func (u *ui) benchStep(i int) tea.Cmd {
-	ctx, c, slots, seed := u.bench.ctx, u.c, u.bench.slots, len(u.bench.runs)*10+i
+	ctx, c, slots, seed := u.bench.ctx, u.bench.client, u.bench.slots, len(u.bench.runs)*10+i
 	v := benchVariants()[i]
 	return func() tea.Msg { return benchMsg{i, runBenchVariant(ctx, c, v, slots, seed)} }
 }

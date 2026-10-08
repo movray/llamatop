@@ -110,6 +110,14 @@ func (u *ui) analysisReport() string {
 	line := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
 
 	line("Server: %s, health %s, ping %d ms", u.c.base, s.health, s.ping.Milliseconds())
+	if u.router {
+		var names []string
+		for _, r := range u.models {
+			names = append(names, r.ID+" ("+r.state()+")")
+		}
+		line("Router mode, at most %d model(s) loaded at once (0 = unlimited): %s", u.maxInst, strings.Join(names, ", "))
+		line("The data below is for model %s only", u.model)
+	}
 	if p := m.props; p != nil {
 		line("Model: %s (alias %s, %s), build %s", filepath.Base(p.ModelPath), p.ModelAlias, p.ModelFtype, p.BuildInfo)
 		line("Slots: %d, context per slot %d", p.TotalSlots, p.DefaultGen.NCtx)
@@ -221,10 +229,29 @@ func (u *ui) analysisReport() string {
 	return b.String()
 }
 
-// Server for the analysis: -ai-url if given, else the monitored server.
+// Server for the analysis: -ai-url if given, else the monitored server. In
+// router mode -ai-model picks the model, by default the monitored one; unlike
+// monitoring, the analysis may load it.
 func (u *ui) aiClient() *client {
+	c := *u.c
 	if u.ai != nil {
-		return u.ai
+		c = *u.ai
 	}
-	return u.c
+	switch {
+	case cfg.AI.Model != "":
+		c.model = cfg.AI.Model
+	case u.ai == nil && u.router:
+		c.model = u.model
+	}
+	c.autoload = true
+	return &c
+}
+
+// Shown where the analysis is sent to.
+func (u *ui) aiTarget() string {
+	c := u.aiClient()
+	if c.model != "" {
+		return c.base + " (" + c.model + ")"
+	}
+	return c.base
 }

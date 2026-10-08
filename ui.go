@@ -26,10 +26,11 @@ const (
 	viewReqs
 	viewTools
 	viewAnalysis
+	viewModels
 	numViews
 )
 
-var viewNames = [numViews]string{"Overview", "History", "Requests", "Tools", "Analysis"}
+var viewNames = [numViews]string{"Overview", "History", "Requests", "Tools", "Analysis", "Models"}
 
 // Confirmation before an action; with input, also a single-line text field.
 type modal struct {
@@ -72,6 +73,16 @@ type ui struct {
 	benchPage int             // visible benchmark rows, set while rendering
 	bench     benchState
 	analysis  analysisState
+
+	// Router mode: the router runs several models, one of them is monitored.
+	router    bool
+	maxInst   int // models loaded at once, 0 = unlimited
+	models    []routerModel
+	modelsErr error
+	model     string              // monitored model, "" = none
+	pinned    bool                // chosen with -m or Enter; otherwise follow the loaded model
+	mons      map[string]*monitor // per model, so switching back keeps the history
+	modelSel  int                 // selection in the Models view
 }
 
 func (u *ui) poll() tea.Cmd {
@@ -86,8 +97,103 @@ func (u *ui) poll() tea.Cmd {
 		u.lastProps = time.Now()
 	}
 	u.polling = true
-	ctx, c := u.ctx, u.c
-	return func() tea.Msg { return sampleMsg(c.poll(ctx, withProps)) }
+	ctx, c, router := u.ctx, u.modelClient(), u.router
+	return func() tea.Msg { return sampleMsg(c.poll(ctx, withProps, router)) }
+}
+
+// Client for requests to the monitored model; in router mode they carry its name.
+func (u *ui) modelClient() *client {
+	if !u.router || u.model == "" {
+		return u.c
+	}
+	c := *u.c
+	c.model = u.model
+	return &c
+}
+
+// Takes a poll result; samples of a model no longer monitored are dropped.
+func (u *ui) handleSample(s sample) {
+	if s.target == u.model || !u.router {
+		u.m.update(s)
+	}
+	if s.roleSeen && s.router != u.router {
+		u.router = s.router
+		if !u.router {
+			u.switchModel("")
+		}
+	}
+	if s.roleSeen {
+		u.maxInst = s.maxInst
+	}
+	if s.modelsSeen {
+		u.models, u.modelsErr = s.models, s.modelsErr
+	}
+	u.followModel()
+}
+
+// Without a pinned model, the monitored one follows what the router has
+// loaded: it stays while it runs or loads, otherwise a running one takes over.
+func (u *ui) followModel() {
+	if !u.router {
+		return
+	}
+	if u.model == "" && cfg.Server.Model != "" {
+		u.pinned = true
+		u.switchModel(cfg.Server.Model)
+	}
+	if u.pinned {
+		return
+	}
+	if r := u.findModel(u.model); r != nil && (r.running() || r.Status.Value == "loading") {
+		return
+	}
+	for _, want := range []string{"loaded", "sleeping", "loading"} {
+		for _, r := range u.models {
+			if r.Status.Value == want {
+				u.switchModel(r.ID)
+				return
+			}
+		}
+	}
+}
+
+func (u *ui) findModel(name string) *routerModel {
+	for i := range u.models {
+		if name != "" && u.models[i].is(name) {
+			return &u.models[i]
+		}
+	}
+	return nil
+}
+
+// Monitors another model. Its earlier monitor is resumed without its last
+// sample, so the gap is neither counted as rate nor as request time.
+func (u *ui) switchModel(name string) {
+	if name == u.model {
+		return
+	}
+	if u.mons == nil {
+		u.mons = map[string]*monitor{}
+	}
+	u.mons[u.model] = u.m
+	u.model = name
+	if m := u.mons[name]; m != nil {
+		m.prev, m.tracks = nil, map[int]*taskTrack{}
+		u.m = m
+	} else {
+		u.m = newMonitor()
+	}
+	u.sel, u.detail, u.reqSel, u.reqDetail = 0, false, -1, false
+	u.loraSel, u.loraEdit, u.benchOff = 0, nil, 0
+	u.lastProps = time.Time{}
+	for i, r := range u.models {
+		if r.is(name) {
+			u.modelSel = i
+		}
+	}
+	if name != "" {
+		u.flash, u.flashErr, u.flashAt = "Monitoring model "+name, false, time.Now()
+	}
 }
 
 func (u *ui) Init() tea.Cmd { return u.poll() }
@@ -113,7 +219,7 @@ func (u *ui) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			u.interval = stepInterval(u.interval, 1)
 		case "-":
 			u.interval = stepInterval(u.interval, -1)
-		case "1", "2", "3", "4", "5":
+		case "1", "2", "3", "4", "5", "6":
 			u.view = int(msg.String()[0] - '1')
 		case "tab":
 			u.view = (u.view + 1) % numViews
@@ -129,6 +235,8 @@ func (u *ui) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.lora {
 			u.loraEdit = nil
+		}
+		if msg.lora || msg.models {
 			u.lastProps = time.Time{} // reload on the next poll
 		}
 	case benchMsg:
@@ -140,7 +248,7 @@ func (u *ui) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if u.ctx.Err() != nil {
 			return u, nil
 		}
-		u.m.update(sample(msg))
+		u.handleSample(sample(msg))
 		if !u.paused {
 			return u, tea.Tick(u.interval, func(time.Time) tea.Msg { return tickMsg{} })
 		}
@@ -204,7 +312,7 @@ func (u *ui) askSlotAction(action string) tea.Cmd {
 			}
 			u.slotFile[id] = arg
 		}
-		return slotActionCmd(u.ctx, u.c, id, action, arg)
+		return slotActionCmd(u.ctx, u.modelClient(), id, action, arg)
 	}}
 	if action != "erase" {
 		name := fmt.Sprintf("slot%d.bin", id)
@@ -249,6 +357,8 @@ func (u *ui) viewKey(k string) tea.Cmd {
 		}
 	case viewTools:
 		return u.toolsKey(k)
+	case viewModels:
+		return u.modelsKey(k)
 	case viewAnalysis:
 		a := &u.analysis
 		switch k {
@@ -348,7 +458,56 @@ func (u *ui) toolsKey(k string) tea.Cmd {
 		for id, v := range u.loraEdit {
 			scales[id] = v
 		}
+		if u.router {
+			// The router routes POSTs by the "model" field, /lora-adapters takes a list.
+			u.flash, u.flashErr, u.flashAt = "Setting LoRA scales is not possible through the router", true, time.Now()
+			return nil
+		}
 		return setLoraCmd(u.ctx, u.c, scales)
+	}
+	return nil
+}
+
+func (u *ui) modelsKey(k string) tea.Cmd {
+	if !u.router || len(u.models) == 0 {
+		return nil
+	}
+	u.modelSel = min(max(u.modelSel, 0), len(u.models)-1)
+	r := u.models[u.modelSel]
+	switch k {
+	case "up", "k":
+		u.modelSel = max(u.modelSel-1, 0)
+	case "down", "j":
+		u.modelSel = min(u.modelSel+1, len(u.models)-1)
+	case "enter":
+		u.pinned = true
+		u.switchModel(r.ID)
+	case "f":
+		u.pinned = false
+		u.followModel()
+		u.flash, u.flashErr, u.flashAt = "Following the loaded model", false, time.Now()
+	case "l":
+		if r.running() || r.Status.Value == "loading" {
+			return nil
+		}
+		loaded := 0
+		for _, m := range u.models {
+			if m.running() || m.Status.Value == "loading" {
+				loaded++
+			}
+		}
+		if u.maxInst > 0 && loaded >= u.maxInst {
+			u.modal = &modal{ask: fmt.Sprintf("Load %s? The router keeps at most %d model(s) and unloads the least recently used.", r.ID, u.maxInst),
+				run: func(string) tea.Cmd { return modelActionCmd(u.ctx, u.c, "load", r.ID) }}
+			return nil
+		}
+		return modelActionCmd(u.ctx, u.c, "load", r.ID)
+	case "u":
+		if r.Status.Value == "unloaded" {
+			return nil
+		}
+		u.modal = &modal{ask: fmt.Sprintf("Unload %s? Running requests are aborted.", r.ID),
+			run: func(string) tea.Cmd { return modelActionCmd(u.ctx, u.c, "unload", r.ID) }}
 	}
 	return nil
 }
